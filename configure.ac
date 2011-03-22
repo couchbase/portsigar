@@ -5,16 +5,22 @@ AC_CONFIG_FILES([Makefile])
 AC_PROG_CC
 AC_PROG_LIBTOOL
 
-
-
 AC_CHECK_LIB([sigar], [main], [SIGAR_LDFLAGS=-lsigar], [
-  AC_MSG_NOTICE([will check for libsigar in ${prefix}/lib])
+  mylibdir=`eval echo ${libdir}`
+  AS_IF([test "x${mylibdir}" = "xNONE/lib"],
+        [ mylibdir="${prefix}/lib"])
+  AS_IF([test "x${mylibdir}" = "xNONE/lib"],
+        [ mylibdir="${exec_prefix}/lib"])
+  AS_IF([test "x${mylibdir}" = "xNONE/lib"],
+        [ mylibdir="${ac_default_prefix}/lib"])
+  AC_MSG_NOTICE([will check for libsigar in ${mylibdir}])
   unset ac_cv_lib_sigar_main
+  LDFLAGS="$LDFLAGS -L${mylibdir}"
   AC_CHECK_LIB([sigar], [main], [
-    SIGAR_LDFLAGS="-L${prefix}/lib -lsigar"
+    SIGAR_LDFLAGS="-L${mylibdir} -lsigar"
   ], [
     AC_MSG_ERROR([need libsigar. Consider passing -L<path> in LDFLAGS])
-  ], [-L${prefix}/lib])
+  ], [-L${mylibdir}])
 ])
 
 AC_CHECK_HEADER([sigar.h], [], [
