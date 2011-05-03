@@ -19,6 +19,11 @@
 #include <string.h>
 #include <sigar.h>
 
+#ifdef _WIN32
+#include <io.h>
+#include <fcntl.h>
+#endif
+
 struct system_stats {
 	uint32_t version;
 	uint32_t struct_size;
@@ -46,6 +51,11 @@ int main(void)
 	struct system_stats reply;
 
 	sigar_open(&sigar);
+
+#ifdef _WIN32
+    _setmode(1, _O_BINARY);
+    _setmode(0, _O_BINARY);
+#endif
 
 	while (!feof(stdin)) {
 		int req;
