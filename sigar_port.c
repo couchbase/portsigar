@@ -75,7 +75,7 @@ int main(void)
         sigar_cpu_get(sigar, &cpu);
 
         reply.cpu_total_ms = cpu.total;
-        reply.cpu_idle_ms = cpu.idle;
+        reply.cpu_idle_ms = cpu.idle + cpu.wait;
 
         reply.swap_total = swap.total;
         reply.swap_used = swap.used;
