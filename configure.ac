@@ -5,7 +5,7 @@ AC_CONFIG_FILES([Makefile])
 AC_PROG_CC
 AC_PROG_LIBTOOL
 
-AC_CHECK_LIB([sigar], [main], [SIGAR_LDFLAGS=-lsigar], [
+AC_CHECK_LIB([sigar], [main], [SIGAR_LDFLAGS="${LDFLAGS} -lsigar"], [
   mylibdir=`eval echo ${libdir}`
   AS_IF([test "x${mylibdir}" = "xNONE/lib"],
         [ mylibdir="${prefix}/lib"])
