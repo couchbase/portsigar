@@ -1,7 +1,40 @@
-#!/bin/sh
+#!/bin/sh -e
 
 git log >ChangeLog
 
-mkdir m4
+mkdir -p m4
+
+# Seach a list of names for the first occurence of a program.
+# Some systems may use aclocal-1.10, others may have aclocal etc.
+#
+# Exit with status code 0 if the program exists (and print the
+# path to stdout), exit with status code 1 if it can't be
+# located
+find_program() {
+  set +e
+  for f in "$@"
+  do
+    file=`which ${f} 2>/dev/null | grep -v '^no '`
+    if test -n "x${file}" -a -x "${file}"
+    then
+      echo ${file}
+      set -e
+      exit 0
+    fi
+  done
+
+  echo "Failed to locate required program:" 1>&2
+  echo "\t$@" 1>&2
+  set -e
+  exit 1
+}
+
+LIBTOOLIZE=`find_program glibtoolize libtoolize`
+ACLOCAL=`find_program aclocal-1.11 aclocal-1.10 aclocal-1.9 aclocal`
+AUTOHEADER=`find_program autoheader`
+AUTOMAKE=`find_program automake-1.11 automake-1.10 automake-1.9 automake`
+AUTOCONF=`find_program autoconf`
+
+export AUTOCONF AUTOMAKE AUTOHEADER ACLOCAL LIBTOOLIZE
 
 autoreconf -i --force --verbose
