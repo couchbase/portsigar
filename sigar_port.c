@@ -120,13 +120,10 @@ int populate_interesting_procs(sigar_t *sigar,
     int i;
     int stale = 0;
 
-    sigar_proc_list_t proc_list;
     sigar_proc_mem_t proc_mem;
     sigar_proc_cpu_t proc_cpu;
 
     struct proc_stats *child;
-
-    sigar_proc_list_get(sigar, &proc_list);
 
     for (i = 0; i < procs_count; ++i) {
         if (sigar_proc_mem_get(sigar, procs[i].pid, &proc_mem) != SIGAR_OK ||
