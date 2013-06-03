@@ -4,6 +4,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_FILES([Makefile])
 AC_PROG_CC
 AC_PROG_LIBTOOL
+AC_CANONICAL_HOST
 
 AC_CHECK_LIB([sigar], [main], [SIGAR_LDFLAGS="${LDFLAGS} -lsigar"], [
   mylibdir=`eval echo ${libdir}`
@@ -38,5 +39,6 @@ AC_CHECK_HEADER([sigar.h], [], [
 
 AC_SUBST(SIGAR_CPPFLAGS)
 AC_SUBST(SIGAR_LDFLAGS)
+AM_CONDITIONAL([WINDOWS],[ case "$host_os" in *mingw*) true ;; *cygwin*)  true ;;  *)  false  ;;  esac])
 
 AC_OUTPUT
