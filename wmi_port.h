@@ -66,7 +66,7 @@ namespace wmiport {
         bool GetChildren(const uint32_t ppid, std::vector<uint32_t>* children);
         bool FillProcessStats(const uint32_t sitterpid, system_stats* stats);
         bool FillSystemStats(system_stats* stats);
-        bool Dump();
+        bool Dump(const system_stats& stats);
     private:
         bool Begin();
         WMIHelper* pHelper;

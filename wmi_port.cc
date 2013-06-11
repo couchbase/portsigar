@@ -14,6 +14,11 @@
  *   See the License for the specific language governing permissions and
  *   limitations under the License.
  */
+
+// TODO - we are using non-rate based raw counters to mimick sigar.
+// We should move the rate counting logic from ns_server to portsigar,
+// so we can delegate the rate counting to OS where the OS supports it.
+
 #define _CRT_SECURE_NO_WARNINGS
 #pragma comment(lib, "wbemuuid")
 
@@ -239,24 +244,22 @@ namespace wmiport {
         stats->struct_size = sizeof(*stats);
 
         static uint64_t totalmem = 0;
-        static uint32_t processors = 0;
-        if (!processors || !totalmem) {
-            REQUIRE(pHelper->Query(
-                                   L"SELECT NumberOfLogicalProcessors, TotalPhysicalMemory"
+        if (!totalmem) {
+            REQUIRE(pHelper->Query(L"SELECT TotalPhysicalMemory"
                                    L" FROM Win32_ComputerSystem"));
-            REQUIRE(pHelper->Read(L"NumberOfLogicalProcessors", &processors));
             REQUIRE(pHelper->Read(L"TotalPhysicalMemory", &totalmem));
         }
 
-        uint64_t msUsedTotal;
-        REQUIRE(pHelper->Query(L"SELECT TotalmSecProcessor"
-                               L" FROM Win32_PerfFormattedData_PerfProc_JobObject"
+        uint64_t ctrTotal, ctrIdle;
+        REQUIRE(pHelper->Query(L"SELECT PercentIdleTime, TimeStamp_Sys100NS"
+                               L" FROM Win32_PerfRawData_PerfOS_Processor"
                                L" WHERE Name = '_Total'"));
-        pHelper->ReadOrDefault(L"TotalmSecProcessor", 0, &msUsedTotal);
+        pHelper->ReadOrDefault(L"TimeStamp_Sys100NS", 0, &ctrTotal);
+        pHelper->ReadOrDefault(L"PercentIdleTime", 0, &ctrIdle);
 
         uint64_t uptime;
         REQUIRE(pHelper->Query(L"SELECT SystemUpTime"
-                               L" FROM Win32_PerfFormattedData_PerfOS_System"));
+                               L" FROM Win32_PerfRawData_PerfOS_System"));
         pHelper->ReadOrDefault(L"SystemUpTime", 0, &uptime);
 
         uint32_t swapalloc = 0;
@@ -276,12 +279,12 @@ namespace wmiport {
         }
 
         uint64_t availmem, freemem, modmem, cache1, cache2, cache3;
-        uint32_t inrate, outrate;
+        uint32_t incount, outcount;
         REQUIRE(pHelper->Query(
                                L"SELECT AvailableBytes, FreeAndZeroPageListBytes, ModifiedPageListBytes,"
                                L"  StandbyCacheCoreBytes, StandbyCacheNormalPriorityBytes,"
                                L"  StandbyCacheReserveBytes, PagesInputPersec, PagesOutputPersec"
-                               L" FROM Win32_PerfFormattedData_PerfOS_Memory"));
+                               L" FROM Win32_PerfRawData_PerfOS_Memory"));
 
         pHelper->ReadOrDefault(L"AvailableBytes", 0, &availmem);
         pHelper->ReadOrDefault(L"FreeAndZeroPageListBytes", 0, &freemem);
@@ -289,11 +292,13 @@ namespace wmiport {
         pHelper->ReadOrDefault(L"StandbyCacheCoreBytes", 0, &cache1);
         pHelper->ReadOrDefault(L"StandbyCacheReserveBytes", 0, &cache2);
         pHelper->ReadOrDefault(L"StandbyCacheNormalPriorityBytes", 0, &cache3);
-        pHelper->ReadOrDefault(L"PagesInputPersec", 0, &inrate);
-        pHelper->ReadOrDefault(L"PagesOutputPersec", 0, &outrate);
 
-        stats->cpu_total_ms = (uptime * processors * 1000);
-        stats->cpu_idle_ms = (uptime * processors * 1000) - msUsedTotal;
+        // as we are using raw counters, below are not rates
+        pHelper->ReadOrDefault(L"PagesInputPersec", 0, &incount);
+        pHelper->ReadOrDefault(L"PagesOutputPersec", 0, &outcount);
+
+        stats->cpu_total_ms = ctrTotal/10;  // 100ns
+        stats->cpu_idle_ms = ctrIdle/10;  // 100ns
         stats->swap_total = swapalloc * 1024 * 1024;
         stats->swap_used = swapuse * 1024 * 1024;
         stats->mem_total = totalmem;
@@ -301,8 +306,8 @@ namespace wmiport {
         stats->mem_actual_free = availmem;
         stats->mem_actual_used =
             totalmem - (freemem + cache1 + cache2 + cache3 + modmem);
-        stats->swap_page_in = inrate;
-        stats->swap_page_out = outrate;
+        stats->swap_page_in = incount;
+        stats->swap_page_out = outcount;
 
         // to take care of a glitch in data
         if (stats->mem_actual_used > totalmem) {
@@ -343,6 +348,7 @@ namespace wmiport {
             pHelper->ReadOrDefault(L"KernelModeTime", 0, &cpu_k);
             pHelper->ReadOrDefault(L"PageFaults", 0, &faults);
             pHelper->ReadOrDefault(L"WorkingSetSize", 0, &mem_ws);
+            //
             // note that this is actually private bytes, not pages!
             pHelper->ReadOrDefault(L"PrivatePageCount", 0, &mem_pvt);
 
@@ -397,24 +403,22 @@ namespace wmiport {
         return true;
     }
 
-    bool WMIPort::Dump() {
+    bool WMIPort::Dump(const system_stats& stats) {
         REQUIRE(Begin());
-
-        uint32_t pid, ppid, sitterpid;
-        pid = GetCurrentProcessId();
-        REQUIRE(GetParentPid(pid, &ppid));
-        REQUIRE(GetParentPid(ppid, &sitterpid));
-
-        system_stats stats;
-        REQUIRE(FillSystemStats(&stats));
-        REQUIRE(FillProcessStats(sitterpid, &stats));
 
         printf("Swap total size: %llu MB\n", stats.swap_total/(1024*1024));
         printf("Swap used size: %llu MB\n", stats.swap_used/(1024*1024));
         printf("Swap in: %llu\n", stats.swap_page_in);
         printf("Swap out: %llu\n", stats.swap_page_out);
-        printf("CPU utilization: %llu sec\n", stats.cpu_total_ms/1000);
-        printf("CPU idle: %llu sec\n", stats.cpu_idle_ms/1000);
+
+        static uint64_t prior_total = stats.cpu_total_ms;
+        static uint64_t prior_idle = stats.cpu_idle_ms;
+        int64_t total = stats.cpu_total_ms - prior_total;
+        int64_t idle = stats.cpu_idle_ms - prior_idle;
+        prior_total = stats.cpu_total_ms;
+        prior_idle = stats.cpu_idle_ms;
+        printf("CPU idle: %llu %%\n", (total > 0 ? (idle * 100) / total : 0));
+
         printf("Mem Total: %llu MB\n", stats.mem_total/(1024*1024));
         printf("Mem Used: %llu MB\n", stats.mem_used/(1024*1024));
         printf("Actual Free: %llu MB\n", stats.mem_actual_free/(1024*1024));
@@ -429,7 +433,7 @@ namespace wmiport {
             printf("Interesting Process: #%d\n", i);
             printf("Name: %s\n", proc.name);
             printf("PID: %llu\n", proc.pid);
-            printf("CPU Utilization: %l sec\n", proc.cpu_utilization/1000);
+            printf("CPU Utilization: %lu sec\n", proc.cpu_utilization/1000);
             printf("Major Faults: %llu\n", proc.major_faults);
             printf("Minor Faults: %llu\n", proc.minor_faults);
             printf("Page Faults: %llu\n", proc.page_faults);
@@ -438,7 +442,6 @@ namespace wmiport {
             printf("Mem Resident: %llu kB\n", proc.mem_resident/1024);
             printf("\n");
         }
-
         return true;
     }
 
@@ -457,7 +460,7 @@ namespace wmiport {
         while (true) {
             REQUIRE(port.FillSystemStats(&reply));
             REQUIRE(port.FillProcessStats(sitterpid, &reply));
-            REQUIRE(port.Dump());
+            REQUIRE(port.Dump(reply));
         }
         return true;
     }
@@ -542,7 +545,7 @@ int main(int argc, const char* argv[]) {
     if (!rc) {
         string err;
         wmiport::Errors::Instance().GetStackTrace(&err);
-        fprintf(stderr, "WMIPort Failed %s\n", err);
+        fprintf(stderr, "WMIPort Failed %s\n", err.c_str());
     }
 
     return (rc ? 0 : 255);

@@ -1,4 +1,5 @@
 @echo off
+setlocal
 
 for /F "tokens=1,2*" %%i in ('reg query "HKLM\Software\Wow6432Node\Microsoft\VisualStudio\SxS\VC7"') DO (
    if "%%i"=="10.0" SET "FOUND_DIR=%%k"
@@ -12,7 +13,7 @@ if "%FOUND_DIR%" == "" (
 )
 
 call "%FOUND_DIR%\bin\vcvars32.bat"
-"%FOUND_DIR%\bin\cl.exe" %*
+"%FOUND_DIR%\bin\cl.exe" /nologo %*
 set RC=%ERRORLEVEL%
 
 :ll_done
