@@ -193,6 +193,8 @@ namespace wmiport {
     }
 
     bool WMIHelper::Query(const wstring& query) {
+        Release(pObj);
+        Release(pEnum);
         REQUIRE_HR(pSvc->ExecQuery(BSTR(L"WQL"),
                                    BSTR(query.c_str()),
                                    WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY,
