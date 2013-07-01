@@ -257,20 +257,32 @@ namespace wmiport {
         pHelper->ReadOrDefault(L"TimeStamp_Sys100NS", 0, &ctrTotal);
         pHelper->ReadOrDefault(L"PercentIdleTime", 0, &ctrIdle);
 
-        uint32_t pagepct = 0, pagebase = 0;
-        bool paging = pHelper->Query(L"SELECT PercentUsage, PercentUsage_Base"
-                                     L" FROM Win32_PerfRawData_PerfOS_PagingFile"
-                                     L" WHERE Name = '_Total'");
-        if (paging) {
-            pHelper->ReadOrDefault(L"PercentUsage", 0, &pagepct);
-            pHelper->ReadOrDefault(L"PercentUsage_Base", 0, &pagebase);
+        uint64_t uptime;
+        REQUIRE(pHelper->Query(L"SELECT SystemUpTime"
+                               L" FROM Win32_PerfRawData_PerfOS_System"));
+        pHelper->ReadOrDefault(L"SystemUpTime", 0, &uptime);
+
+        uint32_t swapalloc = 0;
+        vector<uint32_t> swapallocs;
+        REQUIRE(pHelper->Query(L"SELECT AllocatedBaseSize FROM Win32_PageFileUsage"));
+        REQUIRE(pHelper->ReadVector(L"AllocatedBaseSize", &swapallocs));
+        for (unsigned i = 0; i < swapallocs.size(); i++) {
+            swapalloc += swapallocs[i];
         }
 
-        uint64_t availmem, freemem, modmem, cache1, cache2, cache3, climit;
+        uint32_t swapuse = 0;
+        vector<uint32_t> swapuses;
+        REQUIRE(pHelper->Query(L"SELECT CurrentUsage FROM Win32_PageFileUsage"));
+        REQUIRE(pHelper->ReadVector(L"CurrentUsage", &swapuses));
+        for (unsigned i = 0; i < swapuses.size(); i++) {
+            swapuse += swapuses[i];
+        }
+
+        uint64_t availmem, freemem, modmem, cache1, cache2, cache3;
         uint32_t incount, outcount;
         REQUIRE(pHelper->Query(
                                L"SELECT AvailableBytes, FreeAndZeroPageListBytes, ModifiedPageListBytes,"
-                               L"  StandbyCacheCoreBytes, StandbyCacheNormalPriorityBytes, CommitLimit,"
+                               L"  StandbyCacheCoreBytes, StandbyCacheNormalPriorityBytes,"
                                L"  StandbyCacheReserveBytes, PagesInputPersec, PagesOutputPersec"
                                L" FROM Win32_PerfRawData_PerfOS_Memory"));
 
@@ -280,7 +292,6 @@ namespace wmiport {
         pHelper->ReadOrDefault(L"StandbyCacheCoreBytes", 0, &cache1);
         pHelper->ReadOrDefault(L"StandbyCacheReserveBytes", 0, &cache2);
         pHelper->ReadOrDefault(L"StandbyCacheNormalPriorityBytes", 0, &cache3);
-        pHelper->ReadOrDefault(L"CommitLimit", 0, &climit);
 
         // as we are using raw counters, below are not rates
         pHelper->ReadOrDefault(L"PagesInputPersec", 0, &incount);
@@ -288,6 +299,8 @@ namespace wmiport {
 
         stats->cpu_total_ms = ctrTotal/10;  // 100ns
         stats->cpu_idle_ms = ctrIdle/10;  // 100ns
+        stats->swap_total = swapalloc * 1024 * 1024;
+        stats->swap_used = swapuse * 1024 * 1024;
         stats->mem_total = totalmem;
         stats->mem_used = (totalmem - freemem);
         stats->mem_actual_free = availmem;
@@ -295,11 +308,6 @@ namespace wmiport {
             totalmem - (freemem + cache1 + cache2 + cache3 + modmem);
         stats->swap_page_in = incount;
         stats->swap_page_out = outcount;
-
-        uint64_t swapsz = (climit > totalmem) ? climit - totalmem : 0;
-        uint64_t swapuse = (pagebase > 0) ? (pagepct * swapsz) / pagebase : 0;
-        stats->swap_total = swapsz;
-        stats->swap_used = swapuse;
 
         // to take care of a glitch in data
         if (stats->mem_actual_used > totalmem) {
