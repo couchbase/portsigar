@@ -1,3 +1,4 @@
+*~
 *.gcda
 *.o
 .deps
@@ -30,3 +31,7 @@ install-sh
 missing
 sigar_port
 sigar_port.exe
+/CMakeFiles/
+/CTestTestfile.cmake
+/Testing/
+/cmake_install.cmake
