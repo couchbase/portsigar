@@ -69,8 +69,8 @@ struct system_stats {
     struct proc_stats interesting_procs[NUM_INTERESTING_PROCS];
 };
 
-int find_interesting_procs(sigar_t *sigar, sigar_pid_t parent,
-                           struct proc procs[NUM_INTERESTING_PROCS])
+static int find_interesting_procs(sigar_t *sigar, sigar_pid_t parent,
+                                  struct proc procs[NUM_INTERESTING_PROCS])
 {
     unsigned long i;
     int found = 0;
@@ -113,9 +113,9 @@ int find_interesting_procs(sigar_t *sigar, sigar_pid_t parent,
     return found;
 }
 
-int populate_interesting_procs(sigar_t *sigar,
-                               struct proc *procs, int procs_count,
-                               struct system_stats *reply)
+static int populate_interesting_procs(sigar_t *sigar,
+                                      struct proc *procs, int procs_count,
+                                      struct system_stats *reply)
 {
     int i;
     int stale = 0;
